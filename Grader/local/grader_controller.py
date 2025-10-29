@@ -54,31 +54,88 @@ if __name__ == '__main__':
     launcher_port = cfg.getint('HTTPLauncher', 'port')
     tarball = args.submission[0]
 
+    failed_servers = []
+    healthy_servers = []
+
     for server in utils.GRADING_SERVERS_HOSTNAME:
         print
         print server
-        # Upload submission
-        if not args.no_upload:
-            utils.print_regular('Uploading submission ...')
-            print subprocess.check_output(['curl', 'http://'+server+':'+str(launcher_port), '-F', 'submit=@'+tarball])
+        server_ok = True
+        
+        try:
+            # Upload submission
+            if not args.no_upload:
+                utils.print_regular('Uploading submission ...')
+                try:
+                    # Add --max-time for curl timeout instead of subprocess timeout (Python 2.7 compatible)
+                    print subprocess.check_output(['curl', '--max-time', '30', 'http://'+server+':'+str(launcher_port), '-F', 'submit=@'+tarball], stderr=subprocess.STDOUT)
+                except subprocess.CalledProcessError as e:
+                    print '\033[31mERROR: Upload failed - %s\033[0m' % str(e)
+                    server_ok = False
+                except Exception as e:
+                    print '\033[31mERROR: Upload failed - %s\033[0m' % str(e)
+                    server_ok = False
 
-        # Build submission
-        if not args.no_build:
-            utils.print_regular('Building submission ...')
-            message = {'action': 'build', 'tarball': os.path.basename(tarball)}
-            response = utils.doGET(server, str(launcher_port),  message)
-            print response
-            if response == 'FAILED': sys.exit(1)
+            # Build submission
+            if server_ok and not args.no_build:
+                utils.print_regular('Building submission ...')
+                message = {'action': 'build', 'tarball': os.path.basename(tarball)}
+                response = utils.doGET(server, str(launcher_port),  message)
+                print response
+                if response == 'FAILED': 
+                    server_ok = False
 
-        # Init. server
-        utils.print_regular('Starting grading server ...')
-        message = {'action': 'init',
-                    'remote_grader_path': cfg.get('GradingServer', 'dir-grader'),
-                    'python': cfg.get('GradingServer', 'path-python'),
-                    'port': str(utils.GRADING_SERVER_PORT)}
-        response = utils.doGET(server, launcher_port, message)
-        print response
-        if response == 'FAILED': sys.exit(1)
+            # Init. server
+            if server_ok:
+                utils.print_regular('Starting grading server ...')
+                message = {'action': 'init',
+                            'remote_grader_path': cfg.get('GradingServer', 'dir-grader'),
+                            'python': cfg.get('GradingServer', 'path-python'),
+                            'port': str(utils.GRADING_SERVER_PORT)}
+                response = utils.doGET(server, launcher_port, message)
+                print response
+                if response == 'FAILED': 
+                    server_ok = False
+                    
+        except Exception as e:
+            print '\033[31mERROR: Server initialization failed - %s\033[0m' % str(e)
+            server_ok = False
+        
+        if server_ok:
+            healthy_servers.append(server)
+            print '\033[32m✓ Server %s is ready\033[0m' % server
+        else:
+            failed_servers.append(server)
+            print '\033[31m✗ Server %s failed - will be excluded from tests\033[0m' % server
+    
+    # Update the global server lists to only include healthy servers
+    if len(healthy_servers) == 0:
+        print '\033[31mFATAL: No healthy servers available. Cannot proceed with grading.\033[0m'
+        sys.exit(1)
+    
+    # Rebuild the GRADING_SERVERS lists with only healthy servers
+    utils.GRADING_SERVERS_HOSTNAME = []
+    utils.GRADING_SERVERS_IP = []
+    for server in healthy_servers:
+        idx = utils.GRADING_SERVERS_ALL_HOSTNAME.index(server) if server in utils.GRADING_SERVERS_ALL_HOSTNAME else utils.GRADING_SERVERS_HOSTNAME.index(server)
+        utils.GRADING_SERVERS_HOSTNAME.append(server)
+        try:
+            utils.GRADING_SERVERS_IP.append(utils.resolveIP(server))
+        except:
+            # If we can't resolve, try to use the original IP if available
+            if idx < len(utils.GRADING_SERVERS_IP):
+                utils.GRADING_SERVERS_IP.append(utils.GRADING_SERVERS_IP[idx])
+    
+    print
+    print '\033[33m' + '='*60 + '\033[0m'
+    print '\033[33mSERVER STATUS SUMMARY\033[0m'
+    print '\033[33m' + '='*60 + '\033[0m'
+    print 'Healthy Servers: %d' % len(healthy_servers)
+    print 'Failed Servers: %d' % len(failed_servers)
+    if failed_servers:
+        print '\033[31mExcluded: %s\033[0m' % ', '.join(failed_servers)
+    print '\033[33m' + '='*60 + '\033[0m'
+    print
 
     try:
         # Wait for all servers to init.

@@ -27,6 +27,8 @@ import urllib
 GRADING_SERVER_PORT = None
 GRADING_SERVERS_HOSTNAME = []
 GRADING_SERVERS_IP = []
+GRADING_SERVERS_ALL_HOSTNAME = []  # Track all configured servers (including failed ones)
+GRADING_SERVERS_ALL_IP = []
 
 def print_regular(text):
 	print '\033[33m'+text+'\033[0m'
@@ -42,6 +44,7 @@ def resolveIP(fqdn):
 
 def readConfiguration(config_file):
     global GRADING_SERVER_PORT, GRADING_SERVERS_HOSTNAME, GRADING_SERVERS_IP
+    global GRADING_SERVERS_ALL_HOSTNAME, GRADING_SERVERS_ALL_IP
 
     config = ConfigParser.SafeConfigParser()
     config.read(config_file.name)
@@ -50,6 +53,10 @@ def readConfiguration(config_file):
 
     GRADING_SERVERS_HOSTNAME = [server[1] for server in config.items('GradingServerList')]
     GRADING_SERVERS_IP = [resolveIP(server[1]) for server in config.items('GradingServerList')]
+    
+    # Store all configured servers for tracking purposes
+    GRADING_SERVERS_ALL_HOSTNAME = list(GRADING_SERVERS_HOSTNAME)
+    GRADING_SERVERS_ALL_IP = list(GRADING_SERVERS_IP)
 
     config_file.close()
     return config

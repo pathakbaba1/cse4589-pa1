@@ -32,13 +32,14 @@ from utils import *
 # STARTUP
 def startup(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     message = ['STARTUP', binary, 's', str(random_port())]
-    if run_on_servers(message) == ['True']*5:
+    if run_on_servers(message) == ['True']*num_servers:
         score += 2.5
 
     message = ['STARTUP', binary, 'c', str(random_port())]
-    if run_on_servers(message) == ['True']*5:
+    if run_on_servers(message) == ['True']*num_servers:
         score += 2.5
 
     print score
@@ -46,16 +47,18 @@ def startup(binary):
 # AUTHOR
 def author(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     student_ubit = binary.split(os.sep)[-2].split('_')[0]
 
     message = ['AUTHOR', binary, 's', '6354']
-    output = extractOutputSuccess('AUTHOR', run_on_server('stones.cse.buffalo.edu', message))
+    output = extractOutputSuccess('AUTHOR', run_on_server(GRADING_SERVERS_HOSTNAME[0], message))
     if output:
         if parseAUTHOR(output) == student_ubit: score += 0.5
 
     message = ['AUTHOR', binary, 'c', '7435']
-    output = extractOutputSuccess('AUTHOR', run_on_server('highgate.cse.buffalo.edu', message))
+    # Use last available server instead of hardcoded highgate
+    output = extractOutputSuccess('AUTHOR', run_on_server(GRADING_SERVERS_HOSTNAME[num_servers-1], message))
     if output:
         if parseAUTHOR(output) == student_ubit: score += 0.5
 
@@ -65,8 +68,9 @@ def author(binary):
 # IP
 def ip(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
-    for index in range(5):
+    for index in range(num_servers):
         server = GRADING_SERVERS_HOSTNAME[index]
         port = str(random_port())
 
@@ -76,7 +80,7 @@ def ip(binary):
             if parseIP(output) == GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(server)]:
                 score += 0.5
 
-    for index in range(5):
+    for index in range(num_servers):
         server = GRADING_SERVERS_HOSTNAME[index]
         port = str(random_port())
 
@@ -91,8 +95,9 @@ def ip(binary):
 # PORT
 def port(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
-    for index in range(5):
+    for index in range(num_servers):
         server = GRADING_SERVERS_HOSTNAME[index]
         port = str(random_port())
 
@@ -102,7 +107,7 @@ def port(binary):
             if parsePORT(output) == port:
                 score += 0.25
 
-    for index in range(5):
+    for index in range(num_servers):
         server = GRADING_SERVERS_HOSTNAME[index]
         port = str(random_port())
 
@@ -117,7 +122,8 @@ def port(binary):
 # LIST
 def list_client_output(server_list, port_list):
     output = []
-    for num_hosts in range(1,5):
+    # Dynamic range based on actual server count (was hardcoded to range(1,5))
+    for num_hosts in range(1, len(server_list)):
         host_list = []
         for index in range(num_hosts):
             server = server_list[index]
@@ -147,9 +153,10 @@ def list_server_output(server_list, port_list):
 
 def _list(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     server_list = copy.deepcopy(GRADING_SERVERS_HOSTNAME)
-    for index in range(0,5):
+    for index in range(0,num_servers):
         app_server = server_list.pop(0)
         app_server_ip = GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(app_server)]
         app_server_port = str(random_port())
@@ -161,7 +168,7 @@ def _list(binary):
 
         time.sleep(1)
 
-        port_list = [random_port() for x in range(4)]
+        port_list = [random_port() for x in range(len(server_list))]
         clients_output = []
         for server in server_list:
             port = port_list.pop(0)
@@ -207,12 +214,12 @@ def refresh(binary):
 
     time.sleep(1)
 
-    port_list = [random_port() for x in range(4)]
+    server_list = GRADING_SERVERS_HOSTNAME[1:]
+    port_list = [random_port() for x in range(len(server_list))]
     clients_output = []
 
     c_threads = []
     retval_q = Queue.Queue()
-    server_list = GRADING_SERVERS_HOSTNAME[1:]
     for server in server_list:
         port = port_list.pop(0)
         message = ['REFRESH', binary, 'c', str(port), app_server_ip, app_server_port]
@@ -287,7 +294,8 @@ def send(binary):
         time.sleep(1)
 
         # Init. Receiving Servers
-        port_list = [random_port() for x in range(3)]
+        num_receivers = len(server_list[1:])
+        port_list = [random_port() for x in range(num_receivers)]
         clients_output = []
 
         c_threads = []
@@ -311,7 +319,7 @@ def send(binary):
         ASCII_hard = string.digits+string.ascii_letters+' !#%&();*+,-./<=>?@^_{}~'
         short_msg = []
         big_msg = []
-        for index in range(3):
+        for index in range(num_receivers):
             msg = ''.join(choice(ASCII_easy) for _ in range(126))
             msg = msg
             short_msg.append(msg)
@@ -382,7 +390,8 @@ def broadcast(binary):
     time.sleep(3)
 
     # Init. Receiving Servers
-    port_list = [random_port() for x in range(3)]
+    num_receivers = len(server_list[1:])
+    port_list = [random_port() for x in range(num_receivers)]
     clients_output = []
 
     c_threads = []
@@ -421,15 +430,16 @@ def broadcast(binary):
         output = [parseRECEIVED(msg) for msg in client]
         client_output.append(output)
 
-    expected_server_output = [[send_server_ip, '255.255.255.255', bcast_msg] for _ in range(5)]
-    expected_client_output = [[[send_server_ip, bcast_msg] for _ in range(5)] for _ in range(3)]
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
+    expected_server_output = [[send_server_ip, '255.255.255.255', bcast_msg] for _ in range(num_servers)]
+    expected_client_output = [[[send_server_ip, bcast_msg] for _ in range(num_servers)] for _ in range(num_receivers)]
 
     #Match Server Output
     for srv_msg, exp_msg in itertools.izip(server_output, expected_server_output):
         if cmp(srv_msg, exp_msg) == 0: score += 0.5
 
     #Match Client output
-    for m_index in range(5):
+    for m_index in range(num_servers):
         try:
             if (cmp(client_output[0][m_index], expected_client_output[0][m_index]) == 0 and
                 cmp(client_output[1][m_index], expected_client_output[1][m_index]) == 0 and
@@ -484,12 +494,13 @@ def block(binary):
 
 def blocked(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     app_server = GRADING_SERVERS_HOSTNAME[0]
     app_server_ip = GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(app_server)]
     app_server_port = str(random_port())
 
-    blocking_server = GRADING_SERVERS_HOSTNAME[4]
+    blocking_server = GRADING_SERVERS_HOSTNAME[min(4, num_servers-1)]
     blocking_server_port = str(random_port())
 
     message = ['BLOCKED', binary, 's', app_server_port, GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(blocking_server)]]
@@ -499,16 +510,19 @@ def blocked(binary):
 
     time.sleep(1)
 
-    port_list = [random_port() for x in range(3)]
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
+    blocked_clients = GRADING_SERVERS_HOSTNAME[1:min(4, num_servers)]
+    port_list = [random_port() for x in range(len(blocked_clients))]
 
-    for server in GRADING_SERVERS_HOSTNAME[1:4]:
+    for server in blocked_clients:
         port = port_list.pop(0)
         message = ['BLOCKED', binary, 'c', str(port), app_server_ip, app_server_port]
         threading.Thread(target=run_on_server, args=(server, message)).start()
         port_list.append(port)
         time.sleep(1)
 
-    message = ['ABLOCKED', binary, 'c', blocking_server_port, app_server_ip, app_server_port, ';'.join(GRADING_SERVERS_IP[1:4])]
+    blocked_ips = [GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(s)] for s in blocked_clients]
+    message = ['ABLOCKED', binary, 'c', blocking_server_port, app_server_ip, app_server_port, ';'.join(blocked_ips)]
     run_on_server(blocking_server, message)
 
     s_thread.join()
@@ -522,7 +536,7 @@ def blocked(binary):
             server_output[x][0] = str(x+1)
     except: pass
 
-    if cmp(server_output, list_server_output(GRADING_SERVERS_HOSTNAME[1:4], port_list)) == 0: score += 5.0
+    if cmp(server_output, list_server_output(blocked_clients, port_list)) == 0: score += 5.0
 
     print score
 
@@ -556,6 +570,7 @@ def unblock(binary):
 
 def logout(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     app_server = GRADING_SERVERS_HOSTNAME[0]
     app_server_ip = GRADING_SERVERS_IP[GRADING_SERVERS_HOSTNAME.index(app_server)]
@@ -568,17 +583,17 @@ def logout(binary):
 
     time.sleep(1)
 
-    port_list = [random_port() for x in range(3)]
+    port_list = [random_port() for x in range(min(3, num_servers-1))]
     clients_output = []
 
-    for server in GRADING_SERVERS_HOSTNAME[1:4]:
+    for server in GRADING_SERVERS_HOSTNAME[1:min(4, num_servers)]:
         port = port_list.pop(0)
         message = ['LIST', binary, 'c', str(port), app_server_ip, app_server_port]
         threading.Thread(target=run_on_server, args=(server, message)).start()
         port_list.append(port)
         time.sleep(1)
 
-    logout_server = GRADING_SERVERS_HOSTNAME[4]
+    logout_server = GRADING_SERVERS_HOSTNAME[min(4, num_servers-1)]
     logout_server_port = str(random_port())
     message = ['LOGOUT', binary, 'c', logout_server_port, app_server_ip, app_server_port]
     client_output = run_on_server(logout_server, message)
@@ -640,9 +655,10 @@ def buffer(binary):
 
 def exit(binary):
     score = 0.0
+    num_servers = len(GRADING_SERVERS_HOSTNAME)
 
     message = ['EXIT', binary, 'c', '7845']
-    if run_on_servers(message) == ['True']*5:
+    if run_on_servers(message) == ['True']*num_servers:
         score += 2.5
 
     print score
@@ -673,7 +689,8 @@ def statistics(binary):
         time.sleep(1)
 
         # Init. Receiving Servers
-        port_list = [random_port() for x in range(3)]
+        num_receivers = len(server_list[1:])
+        port_list = [random_port() for x in range(num_receivers)]
         clients_output = []
 
         c_threads = []
@@ -693,7 +710,7 @@ def statistics(binary):
         ASCII = ''.join(chr(x) for x in range(32,127)).replace(';','').replace(':','')
         short_msg = []
         big_msg = []
-        for index in range(3):
+        for index in range(num_receivers):
             short_msg.append(''.join(choice(string.ascii_letters) for _ in range(12)))
             big_msg.append(''.join(choice(string.ascii_letters) for _ in range(25)))
 
